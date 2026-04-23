@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>StegoScan — Hidden Data Detector</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #07080f;
+    --surface: #0e1120;
+    --surface2: #161929;
+    --border: #1e2440;
+    --accent-clean: #00e5a0;
+    --accent-stego: #ff4b6e;
+    --accent-blue: #4d9fff;
+    --text: #e8eaf6;
+    --text-muted: #6b7399;
+    --glow-clean: 0 0 30px rgba(0,229,160,0.35);
+    --glow-stego: 0 0 30px rgba(255,75,110,0.35);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Space Mono', monospace;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Grid background ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(165, 174, 185, 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(182, 195, 209, 0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .container {
+    position: relative;
+    z-index: 1;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 60px 24px 80px;
+  }
+
+  /* ── Header ── */
+  header {
+    text-align: center;
+    margin-bottom: 56px;
+  }
+
+  .badge {
+    display: inline-block;
+    font-family: 'Space Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent-blue);
+    border: 1px solid rgba(77,159,255,0.3);
+    padding: 5px 14px;
+    border-radius: 2px;
+    margin-bottom: 20px;
+    background: rgba(77,159,255,0.05);
+  }
+
+  h1 {
+    font-family: 'Syne', sans-serif;
+    font-size: clamp(2.4rem, 6vw, 4rem);
+    font-weight: 800;
+    letter-spacing: -1px;
+    line-height: 1.05;
+    background: linear-gradient(135deg, #e8eaf6 30%, #4d9fff 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 14px;
+  }
+
+  .subtitle {
+    color: var(--text-muted);
+    font-size: 13px;
+    letter-spacing: 0.5px;
+    line-height: 1.7;
+  }
+
+  /* ── Upload zone ── */
+  .upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: 12px;
+    padding: 52px 32px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.25s, background 0.25s;
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(ellipse at 50% 0%, rgba(77,159,255,0.07) 0%, transparent 65%);
+    pointer-events: none;
+  }
+
+  .upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--accent-blue);
+    background: var(--surface2);
+  }
+
+  .upload-icon {
+    width: 56px;
+    height: 56px;
+    margin: 0 auto 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface2);
+    transition: border-color 0.25s;
+  }
+
+  .upload-zone:hover .upload-icon {
+    border-color: var(--accent-blue);
+  }
+
+  .upload-icon svg { opacity: 0.7; transition: opacity 0.25s; }
+  .upload-zone:hover .upload-icon svg { opacity: 1; }
+
+  .upload-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+
+  .upload-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
+  #file-input { display: none; }
+
+  /* ── Analyze button ── */
+  .btn {
+    width: 100%;
+    margin-top: 16px;
+    padding: 16px;
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    background: linear-gradient(135deg, #2a6fff, #4d9fff);
+    color: #fff;
+    transition: opacity 0.2s, transform 0.1s;
+    display: none;
+  }
+
+  .btn:hover { opacity: 0.9; }
+  .btn:active { transform: scale(0.99); }
+  .btn.visible { display: block; }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* ── Spinner ── */
+  .spinner {
+    display: none;
+    width: 22px; height: 22px;
+    border: 2px solid rgba(255,255,255,0.2);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    margin: 0 auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Result card ── */
+  .result-card {
+    margin-top: 28px;
+    border-radius: 12px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    animation: slideUp 0.4s cubic-bezier(0.22,1,0.36,1);
+    display: none;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .result-card.visible { display: block; }
+
+  .result-header {
+    padding: 22px 28px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .result-header.clean {
+    background: linear-gradient(90deg, rgba(0,229,160,0.08) 0%, transparent 100%);
+    border-bottom-color: rgba(0,229,160,0.2);
+  }
+
+  .result-header.stego {
+    background: linear-gradient(90deg, rgba(255,75,110,0.08) 0%, transparent 100%);
+    border-bottom-color: rgba(255,75,110,0.2);
+  }
+
+  .verdict-icon {
+    width: 44px; height: 44px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    font-size: 20px;
+  }
+
+  .verdict-icon.clean {
+    background: rgba(0,229,160,0.12);
+    box-shadow: var(--glow-clean);
+    color: var(--accent-clean);
+  }
+
+  .verdict-icon.stego {
+    background: rgba(255,75,110,0.12);
+    box-shadow: var(--glow-stego);
+    color: var(--accent-stego);
+  }
+
+  .verdict-label {
+    font-family: 'Syne', sans-serif;
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+  }
+
+  .verdict-label.clean { color: var(--accent-clean); }
+  .verdict-label.stego { color: var(--accent-stego); }
+
+  .verdict-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 3px;
+    letter-spacing: 0.5px;
+  }
+
+  .result-body {
+    padding: 24px 28px;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  /* ── Preview image ── */
+  .preview-wrap {
+    border-radius: 8px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface2);
+    aspect-ratio: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .preview-wrap img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    display: block;
+  }
+
+  /* ── Metrics ── */
+  .metrics { display: flex; flex-direction: column; gap: 14px; }
+
+  .metric {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+
+  .metric-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .metric-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 20px;
+    font-weight: 700;
+  }
+
+  /* ── Confidence bar ── */
+  .conf-bar-wrap {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 14px 16px;
+  }
+
+  .conf-bar-label {
+    font-size: 9px;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 10px;
+  }
+
+  .conf-bar-track {
+    height: 6px;
+    background: var(--border);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+
+  .conf-bar-fill {
+    height: 100%;
+    border-radius: 99px;
+    transition: width 0.8s cubic-bezier(0.22,1,0.36,1);
+    width: 0%;
+  }
+
+  .conf-bar-fill.clean { background: linear-gradient(90deg, #00b37d, #00e5a0); }
+  .conf-bar-fill.stego { background: linear-gradient(90deg, #cc1a3a, #ff4b6e); }
+
+  .conf-bar-pct {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 8px;
+    text-align: right;
+  }
+
+  /* ── File info ── */
+  .file-info {
+    grid-column: 1 / -1;
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .info-pill {
+    font-size: 10px;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 99px;
+    padding: 5px 12px;
+  }
+
+  .info-pill span { color: var(--text); }
+
+  /* ── Error ── */
+  .error-msg {
+    margin-top: 14px;
+    padding: 14px 18px;
+    background: rgba(255,75,110,0.08);
+    border: 1px solid rgba(255,75,110,0.25);
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--accent-stego);
+    display: none;
+  }
+
+  .error-msg.visible { display: block; }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 60px;
+    text-align: center;
+    font-size: 10px;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+  }
+
+  @media (max-width: 560px) {
+    .result-body { grid-template-columns: 1fr; }
+    .file-info { grid-column: 1; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <div class="badge">PVD Steganography Analysis</div>
+    <h1>StegoScan</h1>
+    <p class="subtitle">Upload an image to detect hidden data using<br>SRM filter analysis + deep learning</p>
+  </header>
+
+  <!-- Upload Zone -->
+  <div class="upload-zone" id="drop-zone">
+    <input type="file" id="file-input" accept=".png,.jpg,.jpeg,.bmp,.webp"/>
+    <div class="upload-icon">
+      <svg width="24" height="24" fill="none" stroke="#4d9fff" stroke-width="1.5" viewBox="0 0 24 24">
+        <path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1M16 12l-4-4m0 0L8 12m4-4v12" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+    <div class="upload-label">Drop image here or click to browse</div>
+    <div class="upload-sub">PNG · JPG · BMP · WEBP</div>
+  </div>
+
+  <button class="btn" id="analyze-btn">Analyze Image</button>
+
+  <div class="error-msg" id="error-msg"></div>
+
+  <!-- Result -->
+  <div class="result-card" id="result-card">
+    <div class="result-header" id="result-header">
+      <div class="verdict-icon" id="verdict-icon"></div>
+      <div>
+        <div class="verdict-label" id="verdict-label"></div>
+        <div class="verdict-sub" id="verdict-sub"></div>
+      </div>
+    </div>
+    <div class="result-body">
+      <div class="preview-wrap">
+        <img id="preview-img" src="" alt="Preview"/>
+      </div>
+      <div class="metrics">
+        <div class="metric">
+          <div class="metric-label">Raw Probability (stego)</div>
+          <div class="metric-value" id="metric-prob">—</div>
+        </div>
+        <div class="conf-bar-wrap">
+          <div class="conf-bar-label">Confidence</div>
+          <div class="conf-bar-track">
+            <div class="conf-bar-fill" id="conf-bar"></div>
+          </div>
+          <div class="conf-bar-pct" id="conf-pct"></div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">Resolution</div>
+          <div class="metric-value" id="metric-res">—</div>
+        </div>
+      </div>
+      <div class="file-info" id="file-info"></div>
+    </div>
+  </div>
+
+  <footer>StegoScan · PVD Detection · AUC 0.9579</footer>
+</div>
+
+<script>
+const dropZone   = document.getElementById('drop-zone');
+const fileInput  = document.getElementById('file-input');
+const analyzeBtn = document.getElementById('analyze-btn');
+const resultCard = document.getElementById('result-card');
+const errorMsg   = document.getElementById('error-msg');
+const spinnerHTML = '<div class="spinner" style="display:block"></div>';
+
+let selectedFile = null;
+
+dropZone.addEventListener('click', () => fileInput.click());
+
+dropZone.addEventListener('dragover', e => {
+  e.preventDefault(); dropZone.classList.add('dragover');
+});
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) selectFile(f);
+});
+
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) selectFile(fileInput.files[0]);
+});
+
+function selectFile(f) {
+  selectedFile = f;
+  dropZone.querySelector('.upload-label').textContent = f.name;
+  dropZone.querySelector('.upload-sub').textContent = (f.size / 1024).toFixed(1) + ' KB';
+  analyzeBtn.classList.add('visible');
+  resultCard.classList.remove('visible');
+  errorMsg.classList.remove('visible');
+}
+
+analyzeBtn.addEventListener('click', async () => {
+  if (!selectedFile) return;
+
+  analyzeBtn.disabled = true;
+  analyzeBtn.innerHTML = spinnerHTML;
+  resultCard.classList.remove('visible');
+  errorMsg.classList.remove('visible');
+
+  const formData = new FormData();
+  formData.append('image', selectedFile);
+
+  try {
+    const res = await fetch('/predict', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+
+    const isStego = data.label === 'Stego';
+    const cls     = isStego ? 'stego' : 'clean';
+    const icon    = isStego ? '⚠' : '✓';
+
+    document.getElementById('result-header').className = `result-header ${cls}`;
+    document.getElementById('verdict-icon').className  = `verdict-icon ${cls}`;
+    document.getElementById('verdict-icon').textContent = icon;
+    document.getElementById('verdict-label').className = `verdict-label ${cls}`;
+    document.getElementById('verdict-label').textContent = isStego ? 'Steganography Detected' : 'Image is Clean';
+    document.getElementById('verdict-sub').textContent  = isStego
+      ? 'Hidden data may be embedded in this image'
+      : 'No hidden data detected in this image';
+
+    document.getElementById('preview-img').src = 'data:image/png;base64,' + data.preview;
+    document.getElementById('metric-prob').textContent = data.probability.toFixed(4);
+    document.getElementById('metric-res').textContent  = `${data.width} × ${data.height}`;
+
+    const bar = document.getElementById('conf-bar');
+    bar.className = `conf-bar-fill ${cls}`;
+    setTimeout(() => { bar.style.width = data.confidence + '%'; }, 50);
+    document.getElementById('conf-pct').textContent = data.confidence + '%';
+
+    document.getElementById('file-info').innerHTML = `
+      <div class="info-pill">File <span>${data.filename}</span></div>
+      <div class="info-pill">Size <span>${data.file_size_kb} KB</span></div>
+    `;
+
+    resultCard.classList.add('visible');
+  } catch (err) {
+    errorMsg.textContent = 'Error: ' + err.message;
+    errorMsg.classList.add('visible');
+  } finally {
+    analyzeBtn.disabled = false;
+    analyzeBtn.innerHTML = 'Analyze Image';
+  }
+});
+</script>
+</body>
+</html>
