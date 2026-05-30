@@ -11,10 +11,6 @@
 - [Results](#results)
 - [Repository Structure](#repository-structure)
 - [Getting Started](#getting-started)
-  - [Prerequisites](#prerequisites)
-  - [Installation](#installation)
-  - [Running the Web App](#running-the-web-app)
-  - [Running the Test Script](#running-the-test-script)
 - [Training (Kaggle)](#training-kaggle)
 - [Dataset](#dataset)
 - [How It Works](#how-it-works)
@@ -52,7 +48,7 @@ Input Image (256×256 RGB)
 
 > **Why SRM?** Raw RGB input achieved only ~57% accuracy. SRM filters strip color/content information, making subtle PVD artifacts detectable.
 
-> **Why custom model?** Transfer learning (MobileNetV2 pretrained on ImageNet) degraded performance — steganalysis requires features invisible to natural image classifiers.
+> **Why a custom model?** Transfer learning (MobileNetV2 pretrained on ImageNet) degraded performance — steganalysis requires features invisible to natural image classifiers.
 
 ---
 
@@ -70,7 +66,7 @@ Input Image (256×256 RGB)
 | Clean | 1.00      | 0.66   | 0.80 |
 | Stego | 0.75      | 1.00   | 0.86 |
 
-The gap between validation and test accuracy reflects a distribution shift in the held-out set. The model is highly sensitive (recall 1.00 on stego), with some false positives on clean images.
+The model is highly sensitive (recall 1.00 on stego), with some false positives on clean images.
 
 ---
 
@@ -79,24 +75,28 @@ The gap between validation and test accuracy reflects a distribution shift in th
 ```
 StegoScan/
 │
+├── webapp/
+│   └── stego_detector/        # Flask web application
+│       ├── app.py             # Routes & inference logic
+│       ├── final_model.keras  # Trained model (not in repo — see below)
+│       ├── templates/         # HTML UI (drag-and-drop upload)
+│       └── static/            # CSS / JS assets
+│
 ├── notebooks/
 │   ├── bestver95.ipynb        # Full training pipeline (Kaggle, P100 GPU)
 │   └── testnotebook.ipynb     # Evaluation on held-out test set
 │
-├── webapp/                    # Flask web application
-│       └── stego_detector/
-│           ├── app.py         # Flask routes & inference logic
-│           ├── templates/     # HTML UI (drag-and-drop upload)
-│           └── static/        # CSS / JS assets
-│
-├── scripts/
-│   └── test_model.py          # CLI script: batch inference on a folder
+├── samples/                   # 4 sample images to try with the web app
+│   ├── clean.png              # Clean image example
+│   ├── clean2.png             # Clean image example
+│   ├── seg.png                # Stego image example
+│   └── seg2.png               # Stego image example
 │
 ├── .gitignore
 └── README.md
 ```
 
-> **Note:** The trained model file (`final_model.keras`) is not included in this repo due to size. It can be reproduced by running `bestver95.ipynb` on Kaggle, or downloaded from the Kaggle model registry (see [Training](#training-kaggle)).
+> **Note:** `final_model.keras` is not included due to file size. Place it inside `webapp/stego_detector/` after training or downloading it (see [Training](#training-kaggle)).
 
 ---
 
@@ -113,7 +113,6 @@ StegoScan/
 ```bash
 git clone https://github.com/NihalBai/Steganography.git
 cd Steganography
-
 pip install tensorflow flask pillow scipy numpy
 ```
 
@@ -124,25 +123,9 @@ cd webapp/stego_detector
 python app.py
 ```
 
-Then open `http://localhost:5000` in your browser. Drag and drop any image to get a **Clean / Stego** prediction with a confidence score.
+Open `http://localhost:5000` in your browser. Drag and drop any image — the app returns a **Clean / Stego** prediction with a confidence score. You can use the images in `samples/` to try it out.
 
-> Make sure `final_model.keras` is placed in the same directory as `app.py`.
-
-### Running the Test Script
-
-```bash
-# Place images to test in a folder called output/
-python scripts/test_model.py
-```
-
-Expected output:
-```
-===== STEGANOGRAPHY MODEL TEST =====
-
-image001.png -> Clean (0) | score: 0.0312
-image002.png -> Stego (1) | score: 0.9748
-...
-```
+> Make sure `final_model.keras` is in the same folder as `app.py`.
 
 ---
 
@@ -153,11 +136,11 @@ The model was trained on Kaggle using a **P100 GPU**. To reproduce:
 1. Upload `notebooks/bestver95.ipynb` to Kaggle
 2. Attach the dataset: [`petrdufek/stego-pvd-dataset`](https://www.kaggle.com/datasets/petrdufek/stego-pvd-dataset)
 3. Enable GPU accelerator (P100)
-4. Run all cells
+4. Run all cells — the trained model will be saved as `final_model.keras`
 
-Key training decisions documented in the notebook:
-- `tf.data` lazy pipeline with `prefetch(AUTOTUNE)` to avoid OOM crashes
-- Custom `@tf.keras.utils.register_keras_serializable()` decorator on `tlu` activation for model serialization
+Key decisions documented in the notebook:
+- `tf.data` lazy pipeline with `prefetch(AUTOTUNE)` to avoid RAM crashes
+- Custom `@tf.keras.utils.register_keras_serializable()` on `tlu` for model serialization
 - 3-split strategy: train / val / test (val for early stopping, test for unbiased evaluation)
 
 ---
@@ -173,9 +156,9 @@ Key training decisions documented in the notebook:
 
 ## How It Works
 
-**Pixel Value Differencing (PVD)** hides data by modifying the difference between adjacent pixel values within a human-imperceptible range. These modifications leave subtle statistical traces in the noise residual of the image.
+**Pixel Value Differencing (PVD)** hides secret data by modifying the difference between adjacent pixel values within a range imperceptible to the human eye. These modifications leave subtle statistical traces in the image noise residual.
 
-**SRM (Spatial Rich Model)** filter bank extracts these noise residuals by applying high-pass convolutional kernels that suppress image content. The residual map is then fed to the CNN, which learns to distinguish natural noise patterns from PVD artifacts.
+**SRM (Spatial Rich Model)** extracts those noise residuals by applying high-pass convolutional kernels that suppress image content. The residual map is then fed to the CNN, which learns to distinguish natural noise from PVD artifacts.
 
 ---
 
